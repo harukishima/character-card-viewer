@@ -1,0 +1,57 @@
+:root {
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'Fira Code', Consolas, monospace;
+}
+
+/* Dark theme (default) */
+:root,
+[data-theme="dark"] {
+  --color-bg: #111827;
+  --color-surface: #1f2937;
+  --color-surface-raised: #374151;
+  --color-border: #4b5563;
+  --color-text: #f3f4f6;
+  --color-muted: #9ca3af;
+  --color-accent: #818cf8;
+  --color-error-bg: #451a1a;
+  --color-error-border: #7f1d1d;
+  --color-error-text: #fca5a5;
+}
+
+[data-theme="light"] {
+  --color-bg: #f8f9fa;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f3f4f6;
+  --color-border: #e5e7eb;
+  --color-text: #1f2937;
+  --color-muted: #6b7280;
+  --color-accent: #6366f1;
+  --color-error-bg: #fef2f2;
+  --color-error-border: #fecaca;
+  --color-error-text: #dc2626;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  margin: 0;
+  line-height: 1.3;
+}
+
+pre {
+  margin: 0;
+}

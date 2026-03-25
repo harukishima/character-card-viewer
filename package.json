@@ -1,0 +1,27 @@
+{
+  "name": "character-card-viewer",
+  "private": true,
+  "version": "0.0.0",
+  "author": "harukishima",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "type-check": "vue-tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "dompurify": "^3.3.3",
+    "marked": "^17.0.5",
+    "vue": "^3.5.30"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "^22.0.5",
+    "@types/dompurify": "^3.2.0",
+    "@vitejs/plugin-vue": "^6.0.5",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.1",
+    "vite-plugin-pwa": "^1.2.0",
+    "vue-tsc": "^3.2.6"
+  }
+}
