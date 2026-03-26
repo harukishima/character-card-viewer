@@ -1,16 +1,21 @@
 # Character Card Viewer
 
-A web app for viewing character card files used by AI chat frontends (SillyTavern, RisuAI, etc.). Upload a character card and inspect all of its properties in a clean, readable interface.
+A web app for viewing and managing character card files used by AI chat frontends (SillyTavern, RisuAI, etc.). Upload character cards, browse your library, and inspect all properties in a clean, readable interface.
 
 ## Features
 
+- **Card Library** — save cards to browser storage (IndexedDB) and manage them across sessions
+- **Batch import** — drag-and-drop multiple cards onto the library to import them at once
+- **Multi-select** — Ctrl+Click, Shift+Click, or Ctrl+A to select cards for bulk deletion
+- **Download cards** — re-download the original PNG/JSON file from any saved card
+- **Duplicate detection** — automatically detects duplicate uploads with options to replace, rename, or skip
 - **Upload PNG or JSON** character cards via drag-and-drop or file picker
 - **Supports V1, V2, and V3** character card specifications
 - **Renders HTML & Markdown** in text fields with a toggle to switch to plain text view
 - **Lorebook viewer** with collapsible entries showing keys, content, metadata
 - **Dark/Light theme** with toggle (defaults to dark, persists to localStorage)
 - **PWA support** — installable as a standalone app, works offline
-- **Zero backend** — all parsing happens client-side in the browser
+- **Zero backend** — all parsing and storage happens client-side in the browser
 
 ## Supported Formats
 
@@ -55,6 +60,7 @@ bun run type-check
 - **Vue 3** (Composition API, `<script setup>`)
 - **Vite** — build tool
 - **TypeScript** — full type coverage
+- **IndexedDB** — client-side card storage (no size limits)
 - **marked** — Markdown rendering
 - **DOMPurify** — HTML sanitization
 - **vite-plugin-pwa** — service worker & web app manifest
