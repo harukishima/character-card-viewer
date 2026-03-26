@@ -1,21 +1,132 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useCardLoader } from './composables/useCardLoader'
+import { ref, computed } from 'vue'
+import { useCardLibrary } from './composables/useCardLibrary'
+import { useCardImport } from './composables/useCardImport'
 import { useTheme } from './composables/useTheme'
+import { useConfirm } from './composables/useConfirm'
 import FileUploader from './components/FileUploader.vue'
 import CardViewer from './components/CardViewer.vue'
+import CardLibrary from './components/CardLibrary.vue'
+import DuplicateDialog from './components/DuplicateDialog.vue'
+import ConfirmDialog from './components/ConfirmDialog.vue'
+import type { DuplicateAction } from './types/stored-card'
 
-const { card, imageUrl, error, loading, loadFile, reset, isV2OrLater, isV3 } = useCardLoader()
-const renderMode = ref<'plain' | 'rendered'>('rendered')
+type AppView = 'library' | 'viewer' | 'upload'
+
+// ── Composables ──
+
 const { theme, toggle: toggleTheme } = useTheme()
+const { cards, storageError, loaded: libraryLoaded, removeCard, removeCards, renameCard, getCard, downloadCard } = useCardLibrary()
+const { loading, error, importStatus, duplicateExisting, pendingCard, hasDuplicateDialog, handleFiles, resolveDuplicate, clearPending, dismissImportStatus } = useCardImport()
+const { visible: confirmVisible, options: confirmOptions, handleConfirm, handleCancel } = useConfirm()
+
+// ── View state ──
+
+const currentView = ref<AppView>('library')
+const selectedCardId = ref<string | null>(null)
+const renderMode = ref<'plain' | 'rendered'>('rendered')
+const viewerLoading = ref(false)
+const draggingOver = ref(false)
+
+// ── Viewer computed ──
+
+const viewingCard = computed(() => selectedCardId.value ? getCard(selectedCardId.value) ?? null : null)
+const viewerParsedCard = computed(() => viewingCard.value?.parsedCard ?? null)
+const viewerImageUrl = computed(() => viewingCard.value?.imageData ?? null)
+const viewerIsV2OrLater = computed(() => {
+  const v = viewerParsedCard.value?.version
+  return v === 'v2' || v === 'v3'
+})
+const viewerIsV3 = computed(() => viewerParsedCard.value?.version === 'v3')
+
+// ── Navigation ──
+
+function goToLibrary() {
+  currentView.value = 'library'
+  selectedCardId.value = null
+  error.value = null
+}
+
+function viewCard(id: string) {
+  selectedCardId.value = id
+  renderMode.value = 'rendered'
+  viewerLoading.value = true
+  currentView.value = 'viewer'
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      viewerLoading.value = false
+    })
+  })
+}
+
+function showUploader() {
+  error.value = null
+  currentView.value = 'upload'
+}
+
+// ── File import ──
+
+async function onFilesSelected(files: File[]) {
+  const result = await handleFiles(files)
+  if (result.mode === 'single' && result.cardId) {
+    viewCard(result.cardId)
+  } else if (result.mode === 'batch') {
+    currentView.value = 'library'
+  }
+}
+
+function onDuplicateAction(action: DuplicateAction) {
+  const cardId = resolveDuplicate(action)
+  if (cardId) {
+    viewCard(cardId)
+  } else {
+    goToLibrary()
+  }
+}
+
+function onDuplicateCancel() {
+  clearPending()
+  goToLibrary()
+}
+
+// ── Drag & drop ──
+
+function onDragOver(e: DragEvent) {
+  if (currentView.value !== 'library') return
+  e.preventDefault()
+  draggingOver.value = true
+}
+
+function onDragLeave() {
+  draggingOver.value = false
+}
+
+async function onDrop(e: DragEvent) {
+  e.preventDefault()
+  draggingOver.value = false
+  if (currentView.value !== 'library') return
+  const files = Array.from(e.dataTransfer?.files ?? [])
+  if (files.length) await onFilesSelected(files)
+}
 </script>
 
 <template>
-  <div class="app">
+  <div
+    class="app"
+    @dragover="onDragOver"
+    @dragleave.self="onDragLeave"
+    @drop="onDrop"
+  >
+    <!-- Drop overlay -->
+    <div v-if="draggingOver" class="drop-overlay">
+      <div class="drop-message">Drop character cards here to import</div>
+    </div>
+
     <header class="app-header">
       <h1 class="app-title">Character Card Viewer</h1>
       <div class="header-actions">
-        <template v-if="card">
+        <template v-if="currentView === 'viewer' && viewerParsedCard">
           <div class="render-toggle">
             <button
               class="toggle-btn"
@@ -28,7 +139,11 @@ const { theme, toggle: toggleTheme } = useTheme()
               @click="renderMode = 'plain'"
             >Plain Text</button>
           </div>
-          <button class="reset-btn" @click="reset">Load Another</button>
+          <button class="reset-btn" @click="downloadCard(selectedCardId!)">Download</button>
+          <button class="reset-btn" @click="goToLibrary">Back to Library</button>
+        </template>
+        <template v-if="currentView === 'upload'">
+          <button class="reset-btn" @click="goToLibrary">Back to Library</button>
         </template>
         <button class="theme-btn" @click="toggleTheme" :title="`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`">
           {{ theme === 'dark' ? '&#9788;' : '&#9790;' }}
@@ -48,27 +163,88 @@ const { theme, toggle: toggleTheme } = useTheme()
     </header>
 
     <main class="app-main">
-      <FileUploader v-if="!card && !loading" @file-selected="loadFile" />
+      <!-- Storage error banner -->
+      <div v-if="storageError" class="storage-warning">
+        <p>{{ storageError }}</p>
+        <button class="dismiss-btn" @click="storageError = null">&times;</button>
+      </div>
 
-      <div v-if="loading" class="loading">
+      <!-- Loading state -->
+      <div v-if="!libraryLoaded || (loading && currentView === 'library')" class="loading">
         <div class="spinner"></div>
-        <p>Loading card...</p>
+        <p>{{ !libraryLoaded ? 'Loading library...' : 'Importing cards...' }}</p>
       </div>
 
-      <div v-if="error" class="error">
-        <p>{{ error }}</p>
-        <button class="reset-btn" @click="reset">Try Again</button>
+      <!-- Import status -->
+      <div v-if="importStatus" class="import-status">
+        <p>{{ importStatus }}</p>
+        <button class="dismiss-btn" @click="dismissImportStatus">&times;</button>
       </div>
 
-      <CardViewer
-        v-if="card"
-        :card="card"
-        :image-url="imageUrl"
-        :is-v2-or-later="isV2OrLater"
-        :is-v3="isV3"
-        :render-mode="renderMode"
+      <!-- Library view -->
+      <CardLibrary
+        v-if="libraryLoaded && !loading && currentView === 'library'"
+        :cards="cards"
+        @view-card="viewCard"
+        @remove-card="removeCard"
+        @remove-cards="removeCards"
+        @rename-card="renameCard"
+        @download-card="downloadCard"
+        @add-card="showUploader"
       />
+
+      <!-- Upload view -->
+      <template v-if="currentView === 'upload'">
+        <FileUploader v-if="!loading" @files-selected="onFilesSelected" />
+
+        <div v-if="loading" class="loading">
+          <div class="spinner"></div>
+          <p>Loading card...</p>
+        </div>
+
+        <div v-if="error" class="error">
+          <p>{{ error }}</p>
+          <button class="reset-btn" @click="error = null">Try Again</button>
+        </div>
+      </template>
+
+      <!-- Card viewer -->
+      <template v-if="currentView === 'viewer'">
+        <div v-if="viewerLoading" class="loading">
+          <div class="spinner"></div>
+          <p>Loading card...</p>
+        </div>
+        <CardViewer
+          v-else-if="viewerParsedCard"
+          :card="viewerParsedCard"
+          :image-url="viewerImageUrl"
+          :is-v2-or-later="viewerIsV2OrLater"
+          :is-v3="viewerIsV3"
+          :render-mode="renderMode"
+        />
+      </template>
     </main>
+
+    <!-- Duplicate dialog -->
+    <DuplicateDialog
+      v-if="hasDuplicateDialog && duplicateExisting"
+      :existing-card="duplicateExisting"
+      :incoming-name="pendingCard?.data.name ?? ''"
+      @action="onDuplicateAction"
+      @cancel="onDuplicateCancel"
+    />
+
+    <!-- Confirm dialog -->
+    <ConfirmDialog
+      v-if="confirmVisible"
+      :title="confirmOptions.title"
+      :message="confirmOptions.message"
+      :confirm-label="confirmOptions.confirmLabel"
+      :cancel-label="confirmOptions.cancelLabel"
+      :danger="confirmOptions.danger"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
+    />
   </div>
 </template>
 
@@ -76,6 +252,45 @@ const { theme, toggle: toggleTheme } = useTheme()
 .app {
   min-height: 100vh;
   padding: 24px;
+  position: relative;
+}
+
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.drop-message {
+  padding: 24px 48px;
+  background: var(--color-surface);
+  border: 2px dashed var(--color-accent);
+  border-radius: 16px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.import-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-accent);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--color-accent);
+}
+
+.import-status p {
+  margin: 0;
 }
 
 .app-header {
@@ -84,6 +299,8 @@ const { theme, toggle: toggleTheme } = useTheme()
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .app-title {
@@ -99,7 +316,23 @@ const { theme, toggle: toggleTheme } = useTheme()
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 600px) {
+  .app-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .header-actions {
+    justify-content: flex-start;
+  }
+
+  .render-toggle {
+    flex-shrink: 0;
+  }
 }
 
 .render-toggle {
@@ -140,6 +373,38 @@ const { theme, toggle: toggleTheme } = useTheme()
 
 .reset-btn:hover {
   background: var(--color-border);
+}
+
+.storage-warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: 8px;
+  color: var(--color-error-text);
+  font-size: 0.85rem;
+}
+
+.storage-warning p {
+  margin: 0;
+}
+
+.dismiss-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.dismiss-btn:hover {
+  opacity: 1;
 }
 
 .loading {
